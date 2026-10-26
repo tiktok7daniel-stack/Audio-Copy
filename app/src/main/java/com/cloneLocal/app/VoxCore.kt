@@ -147,6 +147,9 @@ class VoxCore private constructor(private val ctx: Context) {
         val lang = detect(text)
         if (!baseReady(lang)) error("The ${lang.code} voice pack is not downloaded")
         val a = baseEngine(lang).generate(text = text, sid = 0, speed = speed)
+        if (a.samples.size < 100) {
+            error("The ${lang.code} base voice made no sound (${a.samples.size} samples; model ${baseModel(lang)?.name}, espeak data ${baseDir(lang).walkTopDown().any { it.isDirectory && it.name == "espeak-ng-data" }}). Re-download the voice pack.")
+        }
         val plain = Resampler.resample(a.samples, a.sampleRate, OpenVoice.SR)
         if (voice == null) return plain to OpenVoice.SR
         if (!OpenVoice.filesPresent(ovDir)) error("The voice-conversion models are not downloaded")

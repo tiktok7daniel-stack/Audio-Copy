@@ -100,6 +100,7 @@ object Spectrogram {
     }
 
     fun compute(audio: FloatArray): Spec {
+        require(audio.size > 1) { "No audio to analyse (${audio.size} samples)" }
         val pad = (N - HOP) / 2
         val padded = FloatArray(audio.size + 2 * pad)
         for (i in padded.indices) {

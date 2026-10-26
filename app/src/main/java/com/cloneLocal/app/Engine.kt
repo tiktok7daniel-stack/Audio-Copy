@@ -61,6 +61,9 @@ class Engine(private val ctx: Context) {
     var resultSeconds by mutableFloatStateOf(0f)
     var playing by mutableStateOf(false)
     var toast by mutableStateOf<String?>(null)
+    var exportedName by mutableStateOf<String?>(null)
+    var exportedUri by mutableStateOf<Uri?>(null)
+    var exportedHasEmbedding by mutableStateOf(true)
     private var genToken = 0
     private var lastSamples: FloatArray? = null
     private var lastRate = 0
@@ -202,9 +205,11 @@ class Engine(private val ctx: Context) {
                 val (samples, rate) = AudioDecoder.decode(ctx, uri, 15)
                 val s22 = Resampler.resample(samples, rate, OpenVoice.SR)
                 val base = displayName.substringBeforeLast('.').ifBlank { "Voice" }
-                core.createVoice(base, s22)
+                val voice = core.createVoice(base, s22)
                 post {
+                    exportedName = null; exportedUri = null
                     refreshVoices()
+                    exportVoice(voice)
                     if (gen is Gen.Error) gen = Gen.Idle
                 }
             } catch (e: Exception) {
@@ -240,6 +245,7 @@ class Engine(private val ctx: Context) {
                             "meta.txt - the voice name\n").toByteArray(),
                     )
                 }
+                post { exportedName = "${v.name}.voxvoice.zip"; exportedUri = uri; exportedHasEmbedding = emb != null }
                 S().voiceExported
             } catch (e: Exception) {
                 e.message ?: "export failed"

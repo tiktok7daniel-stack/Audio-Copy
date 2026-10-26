@@ -159,6 +159,29 @@ fun HomeScreen(engine: Engine, s: Strings, onPickRef: () -> Unit, onOpenSettings
             }
         }
 
+        engine.exportedName?.let { fname ->
+            Reveal(0) {
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                Panel(strong = true, accent = C.Success) {
+                    SystemTag(s.fileReadyTitle, C.Success)
+                    Spacer(Modifier.height(12.dp))
+                    BasicText(fname, style = type.section().copy(fontSize = 18.sp), maxLines = 1)
+                    Spacer(Modifier.height(4.dp))
+                    BasicText(if (engine.exportedHasEmbedding) s.fileReadyNote else s.fileNoEmb, style = type.body(C.Muted, 13))
+                    engine.exportedUri?.let { uri ->
+                        Spacer(Modifier.height(14.dp))
+                        GhostButton(s.shareFile.upperIfEn(), color = C.Success, icon = Ic.Download, onClick = {
+                            val send = android.content.Intent(android.content.Intent.ACTION_SEND)
+                                .setType("application/zip")
+                                .putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            ctx.startActivity(android.content.Intent.createChooser(send, null).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                        })
+                    }
+                }
+            }
+        }
+
         val g = engine.gen
         if (g is Gen.Running) {
             Reveal(0) { RunningBlock(engine, s) }
