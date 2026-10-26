@@ -6,6 +6,7 @@ on:
       - tools/inspect_models.py
       - tools/test_openvoice.py
       - tools/touch
+      - tools/test_base_voices.py
       - .github/workflows/inspect-models.yml
 jobs:
   inspect:
@@ -16,7 +17,8 @@ jobs:
         with:
           python-version: "3.11"
       - run: sudo apt-get install -y espeak-ng
-      - run: pip install huggingface_hub onnx onnxruntime numpy scipy
+      - run: pip install huggingface_hub onnx onnxruntime numpy scipy sherpa-onnx
+      - run: python tools/test_base_voices.py
       - name: List Arabic sherpa-onnx TTS assets
         run: |
           curl -fsSL "https://github.com/k2-fsa/sherpa-onnx/releases/expanded_assets/tts-models" | grep -oE 'vits-piper-ar[^"<>]*|[^"<>/]*zipvoice[^"<>/]*|[^"<>/]*(arabic|mms-ara|ara)[^"<>/]*tar.bz2' | sort -u
