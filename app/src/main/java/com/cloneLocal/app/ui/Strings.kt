@@ -20,6 +20,7 @@ class Strings(val ar: Boolean) {
         "VoxGate هو أيضًا محرك نطق. في أندرويد: الإعدادات ← إخراج تحويل النص إلى كلام ← المحرك المفضل ← VoxGate. فتقرأ تطبيقات القراءة بصوتك المفعّل.",
     )
     val openTts get() = s("OPEN SPEECH SETTINGS", "افتح إعدادات النطق")
+    val voiceExported get() = s("Voice file saved to Downloads/VoxGate.", "تم حفظ ملف الصوت في Downloads/VoxGate.")
     val appTag get() = s("SYSTEM · VOICE CLONING ENGINE", "النظام · محرك استنساخ الصوت")
     val heroTop get() = s("CLONE ANY", "استنسخ أي")
     val heroGlow get() = s("VOICE.", "صوت.")

@@ -239,6 +239,41 @@ class Engine(private val ctx: Context) {
         }
     }
 
+    /** Writes <name>.voxvoice.zip to Downloads/VoxGate: ref.wav, emb.bin (256 x float32 LE), meta.txt, README.txt. */
+    fun exportVoice(v: Voice) {
+        thread {
+            val msg = try {
+                val emb = core.ensureEmbedding(v)
+                val values = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, "${v.name}.voxvoice.zip")
+                    put(MediaStore.Downloads.MIME_TYPE, "application/zip")
+                    put(MediaStore.Downloads.RELATIVE_PATH, "Download/VoxGate")
+                }
+                val uri = ctx.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                    ?: error("Could not create file")
+                java.util.zip.ZipOutputStream(ctx.contentResolver.openOutputStream(uri)!!).use { z ->
+                    fun add(name: String, bytes: ByteArray) {
+                        z.putNextEntry(java.util.zip.ZipEntry(name)); z.write(bytes); z.closeEntry()
+                    }
+                    add("ref.wav", v.wav.readBytes())
+                    if (emb != null) add("emb.bin", File(v.dir, "emb.bin").readBytes())
+                    add("meta.txt", "${v.name}\n${v.refText}".toByteArray())
+                    add(
+                        "README.txt",
+                        ("VoxGate voice file\n" +
+                            "ref.wav  - mono 16-bit WAV, 22050 Hz, up to 15 s of the voice\n" +
+                            "emb.bin  - OpenVoice V2 tone-colour embedding, 256 float32 little-endian (shape 1x256x1)\n" +
+                            "meta.txt - line 1: name, rest: transcript of ref.wav\n").toByteArray(),
+                    )
+                }
+                S().voiceExported
+            } catch (e: Exception) {
+                e.message ?: "export failed"
+            }
+            post { toast = msg }
+        }
+    }
+
     private fun saveRefTextSafe() { /* previous voice's transcript was saved on selection / generate */ }
 
     // ------------------------------------------------------------ synthesis

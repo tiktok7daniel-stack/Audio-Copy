@@ -406,6 +406,7 @@ private fun VoicesPanel(engine: Engine, s: Strings) {
                     }
                     if (active) SystemTag(s.activeTag, C.Success, blink = false)
                     else GhostButton(s.useVoice.upperIfEn(), modifier = Modifier.width(96.dp).height(40.dp), onClick = { engine.selectVoice(v) })
+                    IconBtn(Ic.Download) { engine.exportVoice(v) }
                     IconBtn(Ic.Trash, C.Danger) { engine.deleteVoice(v) }
                 }
             }

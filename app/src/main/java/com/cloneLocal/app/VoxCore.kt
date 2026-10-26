@@ -103,6 +103,13 @@ class VoxCore private constructor(private val ctx: Context) {
         if (activeVoiceId == v.id) activeVoiceId = null
     }
 
+    /** Timbre embedding of [v], computed once and cached; null until the Arabic pack (OpenVoice) is installed. */
+    fun ensureEmbedding(v: Voice): FloatArray? {
+        v.readEmbedding()?.let { return it }
+        if (!OpenVoice.filesPresent(ovDir)) return null
+        return openVoice().embed(WavIO.read(v.wav).first).also { v.writeEmbedding(it) }
+    }
+
     // ---------------------------------------------------------------- engines
 
     @Synchronized
@@ -169,7 +176,7 @@ class VoxCore private constructor(private val ctx: Context) {
             val base = Resampler.resample(a.samples, a.sampleRate, OpenVoice.SR)
             if (voice == null) return base to OpenVoice.SR
             val ov = openVoice()
-            val emb = voice.readEmbedding() ?: ov.embed(WavIO.read(voice.wav).first).also { voice.writeEmbedding(it) }
+            val emb = ensureEmbedding(voice) ?: error("Voice embedding unavailable")
             val tau = floatArrayOf(0.2f, 0.3f, 0.4f)[quality.coerceIn(0, 2)]
             ov.convert(base, emb, tau) to OpenVoice.SR
         } else {
