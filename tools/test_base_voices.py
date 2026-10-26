@@ -6,14 +6,12 @@ import sherpa_onnx
 REL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models"
 TEXT = {"en": "Hey Daniel, how are you doing?", "ar": "مرحبا كيف حالك اليوم", "zh": "你好，今天怎么样？"}
 CASES = [
-    ("en", "vits-piper-en_US-lessac-medium"),
-    ("en", "vits-piper-en_US-lessac-medium-fp16"),
     ("en", "vits-piper-en_US-lessac-medium-int8"),
+    ("ar", "vits-piper-ar_JO-kareem-medium-int8"),
     ("ar", "vits-piper-ar_JO-kareem-medium"),
-    ("ar", "vits-piper-ar_JO-kareem-medium-fp16"),
-    ("zh", "vits-piper-zh_CN-huayan-medium"),
-    ("zh", "vits-piper-zh_CN-chaowen-medium"),
+    ("zh", "vits-piper-zh_CN-chaowen-medium-int8"),
 ]
+print("sherpa-onnx", sherpa_onnx.__version__ if hasattr(sherpa_onnx, "__version__") else "?", flush=True)
 for lang, name in CASES:
     arc = f"{name}.tar.bz2"
     try:

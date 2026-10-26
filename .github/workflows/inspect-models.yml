@@ -17,7 +17,13 @@ jobs:
         with:
           python-version: "3.11"
       - run: sudo apt-get install -y espeak-ng
-      - run: pip install huggingface_hub onnx onnxruntime numpy scipy sherpa-onnx
+      - name: Which sherpa-onnx 1.x has espeak + an Android static build
+        run: |
+          for v in 1.12.37 1.12.36 1.12.35 1.12.30 1.12.20; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -L "https://github.com/k2-fsa/sherpa-onnx/releases/download/v$v/sherpa-onnx-v$v-android-static-link-onnxruntime.tar.bz2")
+            echo "android static v$v: HTTP $code"
+          done
+      - run: pip install huggingface_hub onnx onnxruntime numpy scipy "sherpa-onnx==1.12.37"
       - run: python tools/test_base_voices.py
       - name: List Arabic sherpa-onnx TTS assets
         run: |
