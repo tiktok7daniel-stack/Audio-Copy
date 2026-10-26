@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - tools/inspect_models.py
+      - tools/test_openvoice.py
       - .github/workflows/inspect-models.yml
 jobs:
   inspect:
@@ -13,8 +14,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install huggingface_hub onnx
-      - run: python tools/inspect_models.py
+      - run: sudo apt-get install -y espeak-ng
+      - run: pip install huggingface_hub onnx onnxruntime numpy scipy
+      - run: python tools/test_openvoice.py
       - name: List Arabic sherpa-onnx TTS assets
         run: |
           curl -fsSL "https://github.com/k2-fsa/sherpa-onnx/releases/expanded_assets/tts-models" | grep -oE 'vits-piper-ar[^"<>]*|[^"<>/]*zipvoice[^"<>/]*|[^"<>/]*(arabic|mms-ara|ara)[^"<>/]*tar.bz2' | sort -u
+      - name: Inspect Arabic archives and static sherpa libs
+        run: |
+          for a in vits-piper-ar_JO-kareem-medium-int8 nabra-82m-arabic-int8; do
+            curl -fsSL -o $a.tar.bz2 https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/$a.tar.bz2
+            echo "== $a"; tar tjf $a.tar.bz2 | grep -v espeak-ng-data/ | head -30; ls -la $a.tar.bz2
+          done
+          curl -fsSL -o st.tar.bz2 https://github.com/k2-fsa/sherpa-onnx/releases/download/v2.0.0/sherpa-onnx-v2.0.0-android-static-link-onnxruntime.tar.bz2
+          tar tjf st.tar.bz2 | grep arm64
