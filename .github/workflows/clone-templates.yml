@@ -1,0 +1,33 @@
+name: Build cloned-voice templates
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - tools/build_clone_template.py
+      - tools/test_openvoice.py
+      - .github/workflows/clone-templates.yml
+
+permissions:
+  contents: write
+
+jobs:
+  templates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: sudo apt-get install -y espeak-ng
+      - run: pip install huggingface_hub onnx onnxruntime numpy scipy "sherpa-onnx==1.12.37"
+      - run: python tools/build_clone_template.py
+      - name: Publish templates
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: clone-templates
+          name: VoxGate cloned-voice templates
+          files: |
+            templates/voxgate-clone-ar.onnx
+            templates/voxgate-clone-en.onnx
+            templates/templates.json
