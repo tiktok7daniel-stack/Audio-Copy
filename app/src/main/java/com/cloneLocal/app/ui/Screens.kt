@@ -100,7 +100,7 @@ fun HomeScreen(engine: Engine, s: Strings, onPickRef: () -> Unit, onOpenSettings
             }
         }
 
-        if (!engine.arPack.ready && !engine.zipPack.ready) {
+        if (!engine.pack.ready) {
             Reveal(3) {
                 Panel(strong = true, accent = C.Warn) {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
@@ -142,11 +142,6 @@ fun HomeScreen(engine: Engine, s: Strings, onPickRef: () -> Unit, onOpenSettings
                 }
                 Spacer(Modifier.height(6.dp))
                 BasicText(s.refTip, style = type.body(C.Muted, 12))
-
-                Spacer(Modifier.height(16.dp))
-                Label(s.refTextLabel, color = C.Cyan)
-                Spacer(Modifier.height(10.dp))
-                Field(engine.refText, { engine.refText = it }, s.refTextHint, minLines = 2)
 
                 Spacer(Modifier.height(16.dp))
                 Label(s.textLabel, color = C.Cyan)
@@ -314,16 +309,9 @@ fun SettingsScreen(engine: Engine, s: Strings) {
             }
         }
         Reveal(4) {
-            PackPanel(s.arPackTitle, s.arPackNote, engine.arPack, s, null, {}, { engine.downloadArabicPack() }, { engine.deleteArabicPack() })
+            PackPanel(s.arPackTitle, s.arPackNote, engine.pack, s, { engine.downloadPack() }, { engine.deletePack() })
         }
         Reveal(5) { VoicesPanel(engine, s) }
-        Reveal(6) {
-            PackPanel(
-                s.enPackTitle, s.modelNote, engine.zipPack, s,
-                engine.modelUrl, { engine.setModelUrlPref(it) },
-                { engine.downloadZipPack() }, { engine.deleteZipPack() },
-            )
-        }
         Reveal(7) { ReaderPanel(s) }
         Reveal(8) { GhostButton(s.clearCache.upperIfEn(), icon = Ic.Refresh, onClick = { engine.clearCache() }) }
         BasicText(s.about, style = type.body(C.Muted, 12))
@@ -337,8 +325,6 @@ private fun PackPanel(
     note: String,
     pack: Pack,
     s: Strings,
-    url: String?,
-    onUrl: (String) -> Unit,
     onDownload: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -353,12 +339,6 @@ private fun PackPanel(
         }
         Spacer(Modifier.height(10.dp))
         BasicText(note, style = type.body(C.Muted, 12))
-        if (url != null) {
-            Spacer(Modifier.height(14.dp))
-            Label(s.modelUrl)
-            Spacer(Modifier.height(8.dp))
-            Field(url, onUrl, "https://…", ltr = true, small = true)
-        }
         if (pack.busy) {
             Spacer(Modifier.height(14.dp))
             GlowBar(pack.progress)

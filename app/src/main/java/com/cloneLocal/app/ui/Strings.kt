@@ -4,6 +4,7 @@ package com.cloneLocal.app.ui
 class Strings(val ar: Boolean) {
     private fun s(en: String, a: String) = if (ar) a else en
 
+    val errNoPack get() = s("Download the voice pack in Settings first.", "نزّل حزمة الأصوات من الإعدادات أولًا.")
     val errNoArPack get() = s("Download the Arabic pack in Settings first.", "نزّل الحزمة العربية من الإعدادات أولًا.")
     val voiceLabel get() = s("ACTIVE VOICE", "الصوت المستخدم")
     val addVoice get() = s("ADD VOICE FROM A CLIP", "أضف صوتًا من مقطع")
@@ -11,8 +12,8 @@ class Strings(val ar: Boolean) {
     val noVoices get() = s("No voices yet. Add one from the Home screen.", "لا توجد أصوات بعد. أضف صوتًا من الشاشة الرئيسية.")
     val useVoice get() = s("USE", "استخدم")
     val activeTag get() = s("ACTIVE", "مفعّل")
-    val arPackTitle get() = s("ARABIC PACK", "الحزمة العربية")
-    val arPackNote get() = s("Arabic voice + voice-cloning model, about 175 MB, downloaded once.", "صوت عربي + نموذج استنساخ الصوت، نحو 175 ميغابايت، يُنزَّل مرة واحدة.")
+    val arPackTitle get() = s("VOICE PACK", "حزمة الأصوات")
+    val arPackNote get() = s("Arabic, English and Chinese base voices plus the voice-cloning model. About 215 MB, downloaded once.", "أصوات أساسية بالعربية والإنجليزية والصينية مع نموذج استنساخ الصوت. نحو 215 ميغابايت، يُنزَّل مرة واحدة.")
     val enPackTitle get() = s("ENGLISH / CHINESE PACK", "حزمة الإنجليزية / الصينية")
     val readerTitle get() = s("USE IN OTHER APPS", "استخدمه في تطبيقات أخرى")
     val readerNote get() = s(
@@ -26,7 +27,7 @@ class Strings(val ar: Boolean) {
     val heroGlow get() = s("VOICE.", "صوت.")
     val heroSub get() = s(
         "Drop in a short clip of a voice and type what it should say — in Arabic, English or Chinese. Everything runs on your phone.",
-        "ضع مقطعًا قصيرًا لأي صوت واكتب ما تريد أن يقوله — بالعربية أو الإنجليزية أو الصينية. كل شيء يعمل على هاتفك.",
+        "ضع مقطعًا قصيرًا (صوت أو فيديو) ثم اكتب أي نص بالعربية أو الإنجليزية أو الصينية، فينطقه بنفس الصوت. كل شيء يعمل على هاتفك.",
     )
 
     val navHome get() = s("Home", "الرئيسية")

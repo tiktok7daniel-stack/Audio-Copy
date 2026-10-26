@@ -46,16 +46,13 @@ class Engine(private val ctx: Context) {
     // settings
     var arabic by mutableStateOf(prefs.getBoolean("ar", false))
     var quality by mutableIntStateOf(core.quality)
-    var modelUrl by mutableStateOf(prefs.getString("modelUrl", MODEL_URL) ?: MODEL_URL)
 
     // packs
-    val arPack = Pack()
-    val zipPack = Pack()
+    val pack = Pack()
 
     // voices
     val voices = mutableStateListOf<Voice>()
     var activeId by mutableStateOf<String?>(null)
-    var refText by mutableStateOf("")
     val activeVoice: Voice? get() = voices.firstOrNull { it.id == activeId }
 
     // input / generation
@@ -79,73 +76,57 @@ class Engine(private val ctx: Context) {
 
     fun changeArabic(v: Boolean) { arabic = v; prefs.edit().putBoolean("ar", v).apply() }
     fun changeQuality(v: Int) { quality = v; core.quality = v }
-    fun setModelUrlPref(v: String) { modelUrl = v; prefs.edit().putString("modelUrl", v).apply() }
 
     private fun post(block: () -> Unit) { ui.post(block) }
     private fun S() = com.cloneLocal.app.ui.Strings(arabic)
 
     // ------------------------------------------------------------ packs
 
-    fun refreshPacks() {
-        arPack.ready = core.arabicReady()
-        zipPack.ready = core.zipReady()
-    }
+    fun refreshPacks() { pack.ready = core.anyReady() }
 
-    fun downloadArabicPack() {
-        if (arPack.busy) return
-        arPack.busy = true; arPack.error = null; arPack.progress = 0f
+    /** Downloads the base voices (Arabic, English, Chinese) and the voice-conversion models. */
+    fun downloadPack() {
+        if (pack.busy) return
+        pack.busy = true; pack.error = null; pack.progress = 0f
         thread {
             try {
                 core.release()
-                core.piperDir.mkdirs(); core.ovDir.mkdirs()
-                val archive = File(ctx.cacheDir, "piper.tar.bz2")
-                download(PIPER_URL, archive) { p -> post { arPack.progress = p * .12f } }
-                post { arPack.extracting = true }
-                extractTarBz2(archive, core.piperDir)
-                archive.delete()
-                post { arPack.extracting = false }
-                for ((name, from, span) in listOf(Triple("tone_extract.onnx", .12f, .03f), Triple("tone_color.onnx", .15f, .85f))) {
+                // (label, weight of the progress bar)
+                var done = 0f
+                val langWeight = .06f
+                for (l in Lang.values()) {
+                    if (!core.baseReady(l)) {
+                        val archive = File(ctx.cacheDir, "${l.code}.tar.bz2")
+                        val from = done
+                        download("$TTS_RELEASE/${l.archive}.tar.bz2", archive) { p -> post { pack.progress = from + p * langWeight } }
+                        post { pack.extracting = true }
+                        extractTarBz2(archive, core.baseDir(l))
+                        archive.delete()
+                        post { pack.extracting = false }
+                    }
+                    done += langWeight
+                }
+                core.ovDir.mkdirs()
+                for ((name, span) in listOf("tone_extract.onnx" to .03f, "tone_color.onnx" to (1f - done - .03f))) {
                     val dest = File(core.ovDir, name)
                     if (!dest.exists()) {
                         val tmp = File(core.ovDir, "$name.part")
-                        download("$OPENVOICE_BASE/$name", tmp) { p -> post { arPack.progress = from + p * span } }
+                        val from = done
+                        download("$OPENVOICE_BASE/$name", tmp) { p -> post { pack.progress = from + p * span } }
                         tmp.renameTo(dest)
                     }
+                    done += span
                 }
-                post { arPack.progress = 1f; refreshPacks() }
+                post { pack.progress = 1f; refreshPacks() }
             } catch (e: Exception) {
-                post { arPack.error = e.message ?: e.javaClass.simpleName }
+                post { pack.error = e.message ?: e.javaClass.simpleName }
             } finally {
-                post { arPack.busy = false; arPack.extracting = false }
+                post { pack.busy = false; pack.extracting = false; refreshPacks() }
             }
         }
     }
 
-    fun downloadZipPack() {
-        if (zipPack.busy) return
-        zipPack.busy = true; zipPack.error = null; zipPack.progress = 0f
-        thread {
-            try {
-                core.release()
-                core.zipDir.mkdirs()
-                val archive = File(ctx.cacheDir, "model.tar.bz2")
-                download(modelUrl.trim(), archive) { p -> post { zipPack.progress = p * .85f } }
-                post { zipPack.extracting = true; zipPack.progress = .88f }
-                extractTarBz2(archive, core.zipDir)
-                archive.delete()
-                val vocoder = File(core.zipDir, "vocos_24khz.onnx")
-                if (!vocoder.exists()) download(VOCODER_URL, vocoder) { p -> post { zipPack.progress = .88f + p * .12f } }
-                post { zipPack.progress = 1f; refreshPacks() }
-            } catch (e: Exception) {
-                post { zipPack.error = e.message ?: e.javaClass.simpleName }
-            } finally {
-                post { zipPack.busy = false; zipPack.extracting = false }
-            }
-        }
-    }
-
-    fun deleteArabicPack() { core.release(); File(ctx.filesDir, "arabic").deleteRecursively(); refreshPacks() }
-    fun deleteZipPack() { core.release(); core.zipDir.deleteRecursively(); refreshPacks() }
+    fun deletePack() { core.release(); core.baseRoot.deleteRecursively(); core.ovDir.deleteRecursively(); refreshPacks() }
     fun clearCache() { ctx.cacheDir.deleteRecursively() }
 
     private fun download(url: String, dest: File, onProgress: (Float) -> Unit) {
@@ -205,19 +186,14 @@ class Engine(private val ctx: Context) {
         val list = core.listVoices()
         voices.clear(); voices.addAll(list)
         activeId = core.activeVoice()?.id
-        refText = activeVoice?.refText.orEmpty()
     }
 
     fun selectVoice(v: Voice) {
-        saveRefText()
         core.activeVoiceId = v.id
         activeId = v.id
-        refText = v.refText
     }
 
     fun deleteVoice(v: Voice) { core.deleteVoice(v); refreshVoices() }
-
-    fun saveRefText() { activeVoice?.let { if (it.refText != refText) it.refText = refText } }
 
     /** Decode the picked audio/video, keep the first 15 s as 22.05 kHz mono, and save it as a new voice. */
     fun addVoice(uri: Uri, displayName: String) {
@@ -228,9 +204,7 @@ class Engine(private val ctx: Context) {
                 val base = displayName.substringBeforeLast('.').ifBlank { "Voice" }
                 core.createVoice(base, s22)
                 post {
-                    saveRefTextSafe()
                     refreshVoices()
-                    refText = ""
                     if (gen is Gen.Error) gen = Gen.Idle
                 }
             } catch (e: Exception) {
@@ -257,13 +231,13 @@ class Engine(private val ctx: Context) {
                     }
                     add("ref.wav", v.wav.readBytes())
                     if (emb != null) add("emb.bin", File(v.dir, "emb.bin").readBytes())
-                    add("meta.txt", "${v.name}\n${v.refText}".toByteArray())
+                    add("meta.txt", "${v.name}\n".toByteArray())
                     add(
                         "README.txt",
                         ("VoxGate voice file\n" +
                             "ref.wav  - mono 16-bit WAV, 22050 Hz, up to 15 s of the voice\n" +
                             "emb.bin  - OpenVoice V2 tone-colour embedding, 256 float32 little-endian (shape 1x256x1)\n" +
-                            "meta.txt - line 1: name, rest: transcript of ref.wav\n").toByteArray(),
+                            "meta.txt - the voice name\n").toByteArray(),
                     )
                 }
                 S().voiceExported
@@ -274,23 +248,18 @@ class Engine(private val ctx: Context) {
         }
     }
 
-    private fun saveRefTextSafe() { /* previous voice's transcript was saved on selection / generate */ }
-
     // ------------------------------------------------------------ synthesis
 
     fun generate() {
         val s = S()
         val text = inputText.trim()
         val voice = activeVoice
-        val ar = VoxCore.isArabic(text)
+        val lang = VoxCore.detect(text)
         when {
             text.isEmpty() -> { gen = Gen.Error(s.errNoText); return }
-            ar && !arPack.ready -> { gen = Gen.Error(s.errNoArPack); return }
-            !ar && !zipPack.ready -> { gen = Gen.Error(s.errNoModel); return }
-            voice == null && !ar -> { gen = Gen.Error(s.errNoRef); return }
-            !ar && refText.isBlank() -> { gen = Gen.Error(s.errNoRefText); return }
+            !core.baseReady(lang) || !OpenVoice.filesPresent(core.ovDir) -> { gen = Gen.Error(s.errNoPack); return }
+            voice == null -> { gen = Gen.Error(s.errNoRef); return }
         }
-        saveRefText()
         stopPlayback()
         gen = Gen.Running
         val token = ++genToken
@@ -403,12 +372,7 @@ class Engine(private val ctx: Context) {
     fun release() { stopPlayback() }
 
     companion object {
-        const val MODEL_URL =
-            "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-zipvoice-distill-int8-zh-en-emilia.tar.bz2"
-        const val VOCODER_URL =
-            "https://github.com/k2-fsa/sherpa-onnx/releases/download/vocoder-models/vocos_24khz.onnx"
-        const val PIPER_URL =
-            "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-ar_JO-kareem-medium-int8.tar.bz2"
+        const val TTS_RELEASE = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models"
         const val OPENVOICE_BASE = "https://huggingface.co/eugenehp/openvoice/resolve/main"
     }
 }

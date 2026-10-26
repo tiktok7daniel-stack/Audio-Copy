@@ -12,7 +12,7 @@ import java.util.Locale
 
 /**
  * Registers VoxGate as a system speech engine, so any reader app can speak with the active cloned voice.
- * Arabic text -> Arabic voice converted to the cloned timbre; English/Chinese -> ZipVoice cloning.
+ * Every language: a small base voice speaks, then OpenVoice swaps in the cloned timbre.
  */
 class VoxTtsService : TextToSpeechService() {
     @Volatile private var stopped = false
@@ -20,8 +20,9 @@ class VoxTtsService : TextToSpeechService() {
 
     override fun onIsLanguageAvailable(lang: String?, country: String?, variant: String?): Int =
         when (lang?.lowercase(Locale.ROOT)) {
-            "ara", "ar" -> if (core.arabicReady()) TextToSpeech.LANG_AVAILABLE else TextToSpeech.LANG_NOT_SUPPORTED
-            "eng", "en", "zho", "zh", "chi" -> if (core.zipReady()) TextToSpeech.LANG_AVAILABLE else TextToSpeech.LANG_NOT_SUPPORTED
+            "ara", "ar" -> if (core.langReady(Lang.AR)) TextToSpeech.LANG_AVAILABLE else TextToSpeech.LANG_NOT_SUPPORTED
+            "eng", "en" -> if (core.langReady(Lang.EN)) TextToSpeech.LANG_AVAILABLE else TextToSpeech.LANG_NOT_SUPPORTED
+            "zho", "zh", "chi" -> if (core.langReady(Lang.ZH)) TextToSpeech.LANG_AVAILABLE else TextToSpeech.LANG_NOT_SUPPORTED
             else -> TextToSpeech.LANG_NOT_SUPPORTED
         }
 
@@ -33,7 +34,7 @@ class VoxTtsService : TextToSpeechService() {
     /**
      * Every saved cloned voice is offered as a voice of its own, once for Arabic and once for English, so a reader app
      * can give the narrator, the men and the women different ones. Each voice speaks any text: the script of the text
-     * picks Arabic or English/Chinese at synthesis time (see [VoxCore.synthesize]).
+     * picks the language at synthesis time (see [VoxCore.synthesize]).
      */
     override fun onGetVoices(): List<android.speech.tts.Voice> {
         val named = voiceNames()
@@ -135,8 +136,9 @@ class CheckVoiceDataActivity : Activity() {
         val core = VoxCore.get(this)
         val ok = ArrayList<String>()
         val missing = ArrayList<String>()
-        (if (core.arabicReady()) ok else missing).add("ara")
-        (if (core.zipReady()) ok else missing).add("eng")
+        (if (core.langReady(Lang.AR)) ok else missing).add("ara")
+        (if (core.langReady(Lang.EN)) ok else missing).add("eng")
+        (if (core.langReady(Lang.ZH)) ok else missing).add("zho")
         setResult(
             TextToSpeech.Engine.CHECK_VOICE_DATA_PASS,
             Intent()

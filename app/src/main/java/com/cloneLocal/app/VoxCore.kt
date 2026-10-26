@@ -1,26 +1,28 @@
 package com.cloneLocal.app
 
 import android.content.Context
-import com.k2fsa.sherpa.onnx.GenerationConfig
 import com.k2fsa.sherpa.onnx.OfflineTts
 import com.k2fsa.sherpa.onnx.OfflineTtsConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsVitsModelConfig
-import com.k2fsa.sherpa.onnx.OfflineTtsZipVoiceModelConfig
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-/** A saved cloned voice: a 22.05 kHz reference clip, its timbre embedding, and the clip's transcript. */
+/** Languages the app can speak. Each has a small base voice (Piper) whose timbre is then swapped for the cloned one. */
+enum class Lang(val code: String, val archive: String) {
+    AR("ar", "vits-piper-ar_JO-kareem-medium-int8"),
+    EN("en", "vits-piper-en_US-lessac-medium-int8"),
+    ZH("zh", "vits-piper-zh_CN-huayan-medium-int8"),
+}
+
+/** A saved cloned voice: a 22.05 kHz reference clip, its timbre embedding, and a name. No transcript is needed. */
 class Voice(val id: String, val dir: File) {
     val wav get() = File(dir, "ref.wav")
     private val embFile get() = File(dir, "emb.bin")
     private val meta get() = File(dir, "meta.txt")
 
     val name: String get() = meta.takeIf { it.exists() }?.readText()?.lineSequence()?.firstOrNull().orEmpty().ifBlank { id }
-    var refText: String
-        get() = meta.takeIf { it.exists() }?.readText()?.substringAfter('\n', "").orEmpty()
-        set(v) { meta.writeText("$name\n$v") }
     val seconds: Float get() = WavIO.seconds(wav)
 
     fun readEmbedding(): FloatArray? {
@@ -38,16 +40,16 @@ class Voice(val id: String, val dir: File) {
 
 /**
  * Everything that touches models. One instance per process, shared by the app UI and the
- * Android TTS service, so a voice generated for the reader app uses the same loaded engines.
+ * Android TTS service, so a voice generated for another app uses the same loaded engines.
+ *
+ * Pipeline for every language: base voice speaks the text, then OpenVoice swaps in the cloned timbre.
  */
 class VoxCore private constructor(private val ctx: Context) {
-    val zipDir = File(ctx.filesDir, "models")
-    val piperDir = File(ctx.filesDir, "arabic/piper")
+    val baseRoot = File(ctx.filesDir, "base")
     val ovDir = File(ctx.filesDir, "arabic/openvoice")
     val voicesDir = File(ctx.filesDir, "voices").also { it.mkdirs() }
 
-    private var zip: OfflineTts? = null
-    private var piper: OfflineTts? = null
+    private val base = HashMap<Lang, OfflineTts>()
     private var ov: OpenVoice? = null
 
     private val prefs = ctx.getSharedPreferences("vox", Context.MODE_PRIVATE)
@@ -60,23 +62,19 @@ class VoxCore private constructor(private val ctx: Context) {
 
     // ---------------------------------------------------------------- availability
 
+    fun baseDir(l: Lang) = File(baseRoot, l.code)
+
     private fun files(dir: File) = dir.walkTopDown().filter { it.isFile }.toList()
 
-    private fun pickOnnx(files: List<File>, key: String): String? {
-        val c = files.filter { it.extension == "onnx" && it.name.contains(key) }
-        return (c.firstOrNull { it.name.contains("int8") } ?: c.firstOrNull())?.absolutePath
-    }
+    private fun baseModel(l: Lang): File? = files(baseDir(l)).firstOrNull { it.extension == "onnx" }
 
-    fun zipReady(): Boolean {
-        val f = files(zipDir)
-        return pickOnnx(f, "encoder") != null && pickOnnx(f, "decoder") != null &&
-            pickOnnx(f, "vocos") != null && f.any { it.name == "tokens.txt" }
-    }
+    fun baseReady(l: Lang): Boolean =
+        baseModel(l) != null && files(baseDir(l)).any { it.name == "tokens.txt" }
 
-    private fun piperModel(): File? = files(piperDir).firstOrNull { it.extension == "onnx" }
+    /** A language can be spoken when its base voice and the voice-conversion models are installed. */
+    fun langReady(l: Lang): Boolean = baseReady(l) && OpenVoice.filesPresent(ovDir)
 
-    fun arabicReady(): Boolean =
-        piperModel() != null && files(piperDir).any { it.name == "tokens.txt" } && OpenVoice.filesPresent(ovDir)
+    fun anyReady(): Boolean = Lang.values().any { langReady(it) }
 
     // ---------------------------------------------------------------- voices
 
@@ -103,7 +101,7 @@ class VoxCore private constructor(private val ctx: Context) {
         if (activeVoiceId == v.id) activeVoiceId = null
     }
 
-    /** Timbre embedding of [v], computed once and cached; null until the Arabic pack (OpenVoice) is installed. */
+    /** Timbre embedding of [v], computed once and cached; null until the voice-conversion models are installed. */
     fun ensureEmbedding(v: Voice): FloatArray? {
         v.readEmbedding()?.let { return it }
         if (!OpenVoice.filesPresent(ovDir)) return null
@@ -113,42 +111,20 @@ class VoxCore private constructor(private val ctx: Context) {
     // ---------------------------------------------------------------- engines
 
     @Synchronized
-    private fun zipEngine(): OfflineTts {
-        zip?.let { return it }
-        val f = files(zipDir)
+    private fun baseEngine(l: Lang): OfflineTts {
+        base[l]?.let { return it }
+        val dir = baseDir(l)
+        val f = files(dir)
+        val model = baseModel(l)?.absolutePath ?: error("${l.code} voice model missing")
         val tokens = f.firstOrNull { it.name == "tokens.txt" }?.absolutePath ?: error("tokens.txt missing")
-        val lexicon = f.firstOrNull { it.name == "lexicon.txt" }?.absolutePath ?: ""
-        val espeak = zipDir.walkTopDown().firstOrNull { it.isDirectory && it.name == "espeak-ng-data" }?.absolutePath ?: ""
-        val cfg = OfflineTtsConfig(
-            model = OfflineTtsModelConfig(
-                zipvoice = OfflineTtsZipVoiceModelConfig(
-                    tokens = tokens,
-                    encoder = pickOnnx(f, "encoder") ?: error("encoder missing"),
-                    decoder = pickOnnx(f, "decoder") ?: error("decoder missing"),
-                    vocoder = pickOnnx(f, "vocos") ?: error("vocoder missing"),
-                    lexicon = lexicon,
-                    dataDir = espeak,
-                ),
-                numThreads = 4, debug = false, provider = "cpu",
-            ),
-        )
-        return OfflineTts(config = cfg).also { zip = it }
-    }
-
-    @Synchronized
-    private fun piperEngine(): OfflineTts {
-        piper?.let { return it }
-        val f = files(piperDir)
-        val model = piperModel()?.absolutePath ?: error("Arabic voice model missing")
-        val tokens = f.firstOrNull { it.name == "tokens.txt" }?.absolutePath ?: error("tokens.txt missing")
-        val espeak = piperDir.walkTopDown().firstOrNull { it.isDirectory && it.name == "espeak-ng-data" }?.absolutePath ?: ""
+        val espeak = dir.walkTopDown().firstOrNull { it.isDirectory && it.name == "espeak-ng-data" }?.absolutePath ?: ""
         val cfg = OfflineTtsConfig(
             model = OfflineTtsModelConfig(
                 vits = OfflineTtsVitsModelConfig(model = model, tokens = tokens, dataDir = espeak),
                 numThreads = 4, debug = false, provider = "cpu",
             ),
         )
-        return OfflineTts(config = cfg).also { piper = it }
+        return OfflineTts(config = cfg).also { base[l] = it }
     }
 
     @Synchronized
@@ -156,41 +132,28 @@ class VoxCore private constructor(private val ctx: Context) {
 
     @Synchronized
     fun release() {
-        zip?.release(); zip = null
-        piper?.release(); piper = null
+        base.values.forEach { it.release() }
+        base.clear()
         ov?.close(); ov = null
     }
 
     // ---------------------------------------------------------------- synthesis
 
     /**
-     * Speak [text]. Arabic text goes through the Arabic voice + tone-colour conversion into [voice];
-     * everything else uses ZipVoice zero-shot cloning (needs [voice]'s transcript).
-     * Returns mono samples and their sample rate.
+     * Speak [text] in whatever language it is written in, with [voice]'s timbre.
+     * With no voice the plain base voice answers. Returns mono samples and their sample rate.
      */
     fun synthesize(text: String, voice: Voice?, speed: Float = 1f): Pair<FloatArray, Int> {
-        val steps = intArrayOf(3, 5, 8)[quality.coerceIn(0, 2)]
-        return if (isArabic(text)) {
-            if (!arabicReady()) error("Arabic pack is not downloaded")
-            val a = piperEngine().generate(text = text, sid = 0, speed = speed)
-            val base = Resampler.resample(a.samples, a.sampleRate, OpenVoice.SR)
-            if (voice == null) return base to OpenVoice.SR
-            val ov = openVoice()
-            val emb = ensureEmbedding(voice) ?: error("Voice embedding unavailable")
-            val tau = floatArrayOf(0.2f, 0.3f, 0.4f)[quality.coerceIn(0, 2)]
-            ov.convert(base, emb, tau) to OpenVoice.SR
-        } else {
-            if (!zipReady()) error("English/Chinese pack is not downloaded")
-            val v = voice ?: error("Pick a reference voice first")
-            val rt = v.refText.trim()
-            if (rt.isEmpty()) error("Type the words spoken in the reference clip")
-            val (ref, rate) = WavIO.read(v.wav)
-            val audio = zipEngine().generateWithConfig(
-                text,
-                GenerationConfig(referenceAudio = ref, referenceSampleRate = rate, referenceText = rt, numSteps = steps, speed = speed),
-            )
-            audio.samples to audio.sampleRate
-        }
+        val lang = detect(text)
+        if (!baseReady(lang)) error("The ${lang.code} voice pack is not downloaded")
+        val a = baseEngine(lang).generate(text = text, sid = 0, speed = speed)
+        val plain = Resampler.resample(a.samples, a.sampleRate, OpenVoice.SR)
+        if (voice == null) return plain to OpenVoice.SR
+        if (!OpenVoice.filesPresent(ovDir)) error("The voice-conversion models are not downloaded")
+        val ov = openVoice()
+        val emb = ensureEmbedding(voice) ?: error("Voice embedding unavailable")
+        val tau = floatArrayOf(0.2f, 0.3f, 0.4f)[quality.coerceIn(0, 2)]
+        return ov.convert(plain, emb, tau) to OpenVoice.SR
     }
 
     companion object {
@@ -198,14 +161,21 @@ class VoxCore private constructor(private val ctx: Context) {
         fun get(ctx: Context): VoxCore =
             instance ?: synchronized(this) { instance ?: VoxCore(ctx.applicationContext).also { instance = it } }
 
-        fun isArabic(text: String): Boolean {
+        /** Arabic letters win if present and dominant; CJK means Chinese; everything else is English. */
+        fun detect(text: String): Lang {
             var ar = 0
+            var cjk = 0
             var other = 0
             for (c in text) when {
                 c in '؀'..'ۿ' || c in 'ݐ'..'ݿ' -> ar++
+                c in '一'..'鿿' -> cjk++
                 c.isLetter() -> other++
             }
-            return ar > 0 && ar >= other
+            return when {
+                ar > 0 && ar >= cjk && ar >= other -> Lang.AR
+                cjk > 0 && cjk >= other -> Lang.ZH
+                else -> Lang.EN
+            }
         }
     }
 }
