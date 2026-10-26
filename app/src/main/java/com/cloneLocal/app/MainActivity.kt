@@ -104,8 +104,12 @@ class MainActivity : Activity() {
         setContentView(ScrollView(this).apply { addView(col) })
     }
 
-    private fun setStatus(s: String) = ui.post { status.text = s }
-    private fun setBusy(b: Boolean) = ui.post { busyButtons.forEach { it.isEnabled = !b } }
+    private fun setStatus(s: String) {
+        ui.post { status.text = s }
+    }
+    private fun setBusy(b: Boolean) {
+        ui.post { busyButtons.forEach { it.isEnabled = !b } }
+    }
 
     // ---- model download -------------------------------------------------
 
