@@ -5,6 +5,7 @@ on:
     paths:
       - tools/inspect_models.py
       - tools/test_openvoice.py
+      - tools/touch
       - .github/workflows/inspect-models.yml
 jobs:
   inspect:
@@ -16,7 +17,6 @@ jobs:
           python-version: "3.11"
       - run: sudo apt-get install -y espeak-ng
       - run: pip install huggingface_hub onnx onnxruntime numpy scipy
-      - run: python tools/test_openvoice.py
       - name: List Arabic sherpa-onnx TTS assets
         run: |
           curl -fsSL "https://github.com/k2-fsa/sherpa-onnx/releases/expanded_assets/tts-models" | grep -oE 'vits-piper-ar[^"<>]*|[^"<>/]*zipvoice[^"<>/]*|[^"<>/]*(arabic|mms-ara|ara)[^"<>/]*tar.bz2' | sort -u
@@ -28,3 +28,10 @@ jobs:
           done
           curl -fsSL -o st.tar.bz2 https://github.com/k2-fsa/sherpa-onnx/releases/download/v2.0.0/sherpa-onnx-v2.0.0-android-static-link-onnxruntime.tar.bz2
           tar tjf st.tar.bz2 | grep arm64
+      - name: List English/Chinese piper voices
+        run: |
+          curl -fsSL "https://github.com/k2-fsa/sherpa-onnx/releases/expanded_assets/tts-models" | grep -oE 'vits-piper-(en_US|zh_CN)[^"<>]*\.tar\.bz2' | sort -u
+          for a in vits-piper-en_US-lessac-medium-int8 vits-piper-zh_CN-huayan-medium-int8; do
+            curl -fsSL -o $a.tar.bz2 https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/$a.tar.bz2 || { echo "MISSING $a"; continue; }
+            echo "== $a"; tar tjf $a.tar.bz2 | grep -v 'espeak-ng-data/.' ; ls -la $a.tar.bz2
+          done
