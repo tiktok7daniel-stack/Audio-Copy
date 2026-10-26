@@ -54,7 +54,7 @@ private fun Page(content: @Composable () -> Unit) {
 private fun TopBar(engine: Engine) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
         Logo()
-        IconBtn(Ic.Globe) { engine.setArabic(!engine.arabic) }
+        IconBtn(Ic.Globe) { engine.changeArabic(!engine.arabic) }
     }
 }
 
@@ -299,14 +299,14 @@ fun SettingsScreen(engine: Engine, s: Strings) {
             Panel {
                 Label(s.language, color = C.Cyan)
                 Spacer(Modifier.height(10.dp))
-                Segmented(listOf("English", "العربية"), if (engine.arabic) 1 else 0) { engine.setArabic(it == 1) }
+                Segmented(listOf("English", "العربية"), if (engine.arabic) 1 else 0) { engine.changeArabic(it == 1) }
             }
         }
         Reveal(3) {
             Panel {
                 Label(s.quality, color = C.Cyan)
                 Spacer(Modifier.height(10.dp))
-                Segmented(listOf(s.qFast, s.qBalanced, s.qBest), engine.quality) { engine.setQuality(it) }
+                Segmented(listOf(s.qFast, s.qBalanced, s.qBest), engine.quality) { engine.changeQuality(it) }
                 Spacer(Modifier.height(8.dp))
                 BasicText(s.qualityNote, style = type.body(C.Muted, 12))
             }

@@ -77,8 +77,8 @@ class Engine(private val ctx: Context) {
         refreshLibrary()
     }
 
-    fun setArabic(v: Boolean) { arabic = v; prefs.edit().putBoolean("ar", v).apply() }
-    fun setQuality(v: Int) { quality = v; prefs.edit().putInt("quality", v).apply() }
+    fun changeArabic(v: Boolean) { arabic = v; prefs.edit().putBoolean("ar", v).apply() }
+    fun changeQuality(v: Int) { quality = v; prefs.edit().putInt("quality", v).apply() }
     fun setModelUrlPref(v: String) { modelUrl = v; prefs.edit().putString("modelUrl", v).apply() }
 
     private fun post(block: () -> Unit) { ui.post(block) }
