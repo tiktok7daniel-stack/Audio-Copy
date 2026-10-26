@@ -30,18 +30,62 @@ class VoxTtsService : TextToSpeechService() {
     override fun onLoadLanguage(lang: String?, country: String?, variant: String?): Int =
         onIsLanguageAvailable(lang, country, variant)
 
-    override fun onGetVoices(): List<android.speech.tts.Voice> = listOf(
-        android.speech.tts.Voice(VOICE_AR, Locale("ar"), android.speech.tts.Voice.QUALITY_NORMAL, android.speech.tts.Voice.LATENCY_NORMAL, false, emptySet()),
-        android.speech.tts.Voice(VOICE_EN, Locale("en"), android.speech.tts.Voice.QUALITY_NORMAL, android.speech.tts.Voice.LATENCY_NORMAL, false, emptySet()),
-    )
+    /**
+     * Every saved cloned voice is offered as a voice of its own, once for Arabic and once for English, so a reader app
+     * can give the narrator, the men and the women different ones. Each voice speaks any text: the script of the text
+     * picks Arabic or English/Chinese at synthesis time (see [VoxCore.synthesize]).
+     */
+    override fun onGetVoices(): List<android.speech.tts.Voice> {
+        val named = voiceNames()
+        val out = ArrayList<android.speech.tts.Voice>()
+        for (lang in listOf("ar", "en")) {
+            for (name in named.keys) {
+                out += android.speech.tts.Voice("$name · $lang", Locale(lang), android.speech.tts.Voice.QUALITY_NORMAL, android.speech.tts.Voice.LATENCY_NORMAL, false, emptySet())
+            }
+        }
+        // Before any voice is saved the two plain voices still answer, with the engine's default sound
+        if (named.isEmpty()) {
+            out += android.speech.tts.Voice(VOICE_AR, Locale("ar"), android.speech.tts.Voice.QUALITY_NORMAL, android.speech.tts.Voice.LATENCY_NORMAL, false, emptySet())
+            out += android.speech.tts.Voice(VOICE_EN, Locale("en"), android.speech.tts.Voice.QUALITY_NORMAL, android.speech.tts.Voice.LATENCY_NORMAL, false, emptySet())
+        }
+        return out
+    }
+
+    /** The saved voices by the name they are offered under: their own name, with a short tag when two share one. */
+    private fun voiceNames(): Map<String, Voice> {
+        val voices = core.listVoices().sortedBy { it.id }
+        val seen = HashMap<String, Int>()
+        val out = LinkedHashMap<String, Voice>()
+        for (v in voices) {
+            val base = v.name.ifBlank { v.id }
+            val n = (seen[base] ?: 0) + 1
+            seen[base] = n
+            out[if (n == 1) base else "$base #$n"] = v
+        }
+        return out
+    }
+
+    /** The saved voice a requested name stands for: "<name> · ar", "<name> · en", or null for the plain ones. */
+    private fun voiceFor(requested: String?): Voice? {
+        if (requested.isNullOrBlank() || requested == VOICE_AR || requested == VOICE_EN) return null
+        return voiceNames()[requested.substringBeforeLast(" · ")]
+    }
 
     override fun onIsValidVoiceName(name: String?): Int =
-        if (name == VOICE_AR || name == VOICE_EN) TextToSpeech.SUCCESS else TextToSpeech.ERROR
+        if (name == VOICE_AR || name == VOICE_EN || voiceFor(name) != null) TextToSpeech.SUCCESS else TextToSpeech.ERROR
 
     override fun onLoadVoice(name: String?): Int = onIsValidVoiceName(name)
 
-    override fun onGetDefaultVoiceNameFor(lang: String?, country: String?, variant: String?): String =
-        if (lang?.lowercase(Locale.ROOT) in setOf("eng", "en", "zho", "zh", "chi")) VOICE_EN else VOICE_AR
+    override fun onGetDefaultVoiceNameFor(lang: String?, country: String?, variant: String?): String {
+        val en = lang?.lowercase(Locale.ROOT) in setOf("eng", "en", "zho", "zh", "chi")
+        val active = core.activeVoice()
+        val name = voiceNames().entries.firstOrNull { it.value.id == active?.id }?.key
+        return when {
+            name != null -> "$name · ${if (en) "en" else "ar"}"
+            en -> VOICE_EN
+            else -> VOICE_AR
+        }
+    }
 
     override fun onStop() { stopped = true }
 
@@ -51,7 +95,8 @@ class VoxTtsService : TextToSpeechService() {
         if (text.isEmpty()) { callback.done(); return }
         val speed = (request.speechRate / 100f).coerceIn(0.5f, 2f)
         try {
-            val voice = core.activeVoice()
+            // The voice the reader app asked for by name, else the one picked in VoxGate
+            val voice = voiceFor(request.voiceName) ?: core.activeVoice()
             callback.start(OpenVoice.SR, AudioFormat.ENCODING_PCM_16BIT, 1)
             for (sentence in text.split(Regex("(?<=[.!?؟۔…\\n])\\s+")).filter { it.isNotBlank() }) {
                 if (stopped) return
