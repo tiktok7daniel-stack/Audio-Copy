@@ -35,10 +35,12 @@ jobs:
           curl -fL -o app/src/main/java/com/k2fsa/sherpa/onnx/Tts.kt \
             "https://raw.githubusercontent.com/k2-fsa/sherpa-onnx/${SHERPA_VERSION}/sherpa-onnx/kotlin-api/Tts.kt"
 
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: 8.14.3
-          cache-disabled: true
+      - name: Install Gradle 8.14.3
+        run: |
+          curl -fL --retry 5 --retry-delay 3 --connect-timeout 20 --max-time 240 \
+            -o gradle.zip https://services.gradle.org/distributions/gradle-8.14.3-bin.zip
+          unzip -q gradle.zip -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/gradle-8.14.3/bin" >> "$GITHUB_PATH"
 
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
