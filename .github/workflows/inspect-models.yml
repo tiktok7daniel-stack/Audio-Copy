@@ -1,0 +1,20 @@
+name: Inspect models
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - tools/inspect_models.py
+      - .github/workflows/inspect-models.yml
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install huggingface_hub onnx
+      - run: python tools/inspect_models.py
+      - name: List Arabic sherpa-onnx TTS assets
+        run: |
+          curl -fsSL "https://github.com/k2-fsa/sherpa-onnx/releases/expanded_assets/tts-models" | grep -oE 'vits-piper-ar[^"<>]*|[^"<>/]*zipvoice[^"<>/]*|[^"<>/]*(arabic|mms-ara|ara)[^"<>/]*tar.bz2' | sort -u
