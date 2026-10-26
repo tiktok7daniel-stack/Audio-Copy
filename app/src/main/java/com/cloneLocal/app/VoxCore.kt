@@ -118,11 +118,15 @@ class VoxCore private constructor(private val ctx: Context) {
         val model = baseModel(l)?.absolutePath ?: error("${l.code} voice model missing")
         val tokens = f.firstOrNull { it.name == "tokens.txt" }?.absolutePath ?: error("tokens.txt missing")
         val espeak = dir.walkTopDown().firstOrNull { it.isDirectory && it.name == "espeak-ng-data" }?.absolutePath ?: ""
+        // Lexicon-based voices (Chinese) ship lexicon.txt plus number/date/phone rules instead of espeak data
+        val lexicon = f.firstOrNull { it.name == "lexicon.txt" }?.absolutePath ?: ""
+        val rules = f.filter { it.extension == "fst" }.joinToString(",") { it.absolutePath }
         val cfg = OfflineTtsConfig(
             model = OfflineTtsModelConfig(
-                vits = OfflineTtsVitsModelConfig(model = model, tokens = tokens, dataDir = espeak),
+                vits = OfflineTtsVitsModelConfig(model = model, lexicon = lexicon, tokens = tokens, dataDir = espeak),
                 numThreads = 4, debug = false, provider = "cpu",
             ),
+            ruleFsts = rules,
         )
         return OfflineTts(config = cfg).also { base[l] = it }
     }
