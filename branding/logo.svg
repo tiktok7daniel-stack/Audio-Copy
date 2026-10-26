@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 260" width="640" height="260">
+  <defs>
+    <radialGradient id="halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#38D5FF" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#38D5FF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="core" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#E9F8FF"/><stop offset=".5" stop-color="#38D5FF"/><stop offset="1" stop-color="#2E6BFF"/>
+    </linearGradient>
+    <filter id="g"><feGaussianBlur stdDeviation="6"/></filter>
+  </defs>
+  <rect width="640" height="260" fill="#04060B"/>
+  <g transform="translate(130 130)">
+    <circle r="100" fill="url(#halo)"/>
+    <path d="M0-70 L70 0 L0 70 L-70 0 Z" fill="none" stroke="#38D5FF" stroke-width="6" stroke-linejoin="round"/>
+    <path d="M0-40 L40 0 L0 40 L-40 0 Z" fill="url(#core)"/>
+    <path d="M0-98 V-82 M0 82 V98" stroke="#38D5FF" stroke-width="6" stroke-linecap="round"/>
+  </g>
+  <text x="250" y="150" font-family="Rajdhani, Arial, sans-serif" font-weight="700" font-size="84" letter-spacing="6" fill="#E9F0FF">VOX<tspan fill="#38D5FF" filter="url(#g)" opacity=".0">GATE</tspan><tspan fill="#38D5FF">GATE</tspan></text>
+  <text x="252" y="190" font-family="Arial, sans-serif" font-size="16" letter-spacing="5" fill="#8590AA">OFFLINE VOICE CLONING</text>
+</svg>
