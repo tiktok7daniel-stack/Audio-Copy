@@ -13,7 +13,7 @@ import java.nio.ByteOrder
 enum class Lang(val code: String, val archive: String) {
     AR("ar", "vits-piper-ar_JO-kareem-medium-int8"),
     EN("en", "vits-piper-en_US-lessac-medium-int8"),
-    ZH("zh", "vits-piper-zh_CN-huayan-medium-int8"),
+    ZH("zh", "vits-piper-zh_CN-chaowen-medium-int8"),
 }
 
 /** A saved cloned voice: a 22.05 kHz reference clip, its timbre embedding, and a name. No transcript is needed. */

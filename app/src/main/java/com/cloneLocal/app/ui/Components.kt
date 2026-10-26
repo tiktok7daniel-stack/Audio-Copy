@@ -462,7 +462,7 @@ fun Dock(selected: Int, labels: List<String>, onSelect: (Int) -> Unit, modifier:
     val icons = listOf(Ic.Home, Ic.Archive, Ic.Sliders)
     val type = LocalType.current
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-    Panel(modifier.width(280.dp).height(64.dp), strong = true, pad = 0.dp) {
+    Panel(modifier.width(280.dp).height(64.dp).background(C.Bg), strong = true, pad = 0.dp) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val w = maxWidth / 3
             val x by animateDpAsState(w * selected, spring(dampingRatio = .75f), label = "dock")
