@@ -15,11 +15,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.k2fsa.sherpa.onnx.GenerationConfig
-import com.k2fsa.sherpa.onnx.OfflineTts
-import com.k2fsa.sherpa.onnx.OfflineTtsConfig
-import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
-import com.k2fsa.sherpa.onnx.OfflineTtsZipVoiceModelConfig
 import java.io.File
 import kotlin.concurrent.thread
 
@@ -32,40 +27,44 @@ sealed interface Gen {
     class Error(val msg: String) : Gen
 }
 
-/** All app state + the on-device pipeline. UI reads the Compose state fields directly. */
+/** A downloadable model pack with its own progress state. */
+class Pack {
+    var ready by mutableStateOf(false)
+    var busy by mutableStateOf(false)
+    var progress by mutableFloatStateOf(0f)
+    var extracting by mutableStateOf(false)
+    var error by mutableStateOf<String?>(null)
+}
+
+/** App state for the UI. Model work lives in [VoxCore] so the TTS service can share it. */
 class Engine(private val ctx: Context) {
     private val ui = Handler(Looper.getMainLooper())
     private val prefs = ctx.getSharedPreferences("vox", Context.MODE_PRIVATE)
-    private val modelRoot get() = File(ctx.filesDir, "models")
+    val core = VoxCore.get(ctx)
     private val libDir get() = File(ctx.filesDir, "library").also { it.mkdirs() }
 
     // settings
     var arabic by mutableStateOf(prefs.getBoolean("ar", false))
-    var quality by mutableIntStateOf(prefs.getInt("quality", 1))
+    var quality by mutableIntStateOf(core.quality)
     var modelUrl by mutableStateOf(prefs.getString("modelUrl", MODEL_URL) ?: MODEL_URL)
 
-    // model
-    var modelReady by mutableStateOf(false)
-    var modelBusy by mutableStateOf(false)
-    var modelProgress by mutableFloatStateOf(0f)
-    var modelStatus by mutableStateOf("")
-    var modelError by mutableStateOf<String?>(null)
+    // packs
+    val arPack = Pack()
+    val zipPack = Pack()
 
-    // inputs
-    var refName by mutableStateOf<String?>(null)
-    var refSeconds by mutableFloatStateOf(0f)
+    // voices
+    val voices = mutableStateListOf<Voice>()
+    var activeId by mutableStateOf<String?>(null)
     var refText by mutableStateOf("")
-    var inputText by mutableStateOf("")
-    private var refSamples: FloatArray? = null
-    private var refRate = 0
+    val activeVoice: Voice? get() = voices.firstOrNull { it.id == activeId }
 
-    // generation
+    // input / generation
+    var inputText by mutableStateOf("")
     var gen by mutableStateOf<Gen>(Gen.Idle)
     var resultSeconds by mutableFloatStateOf(0f)
     var playing by mutableStateOf(false)
     var toast by mutableStateOf<String?>(null)
     private var genToken = 0
-    private var tts: OfflineTts? = null
     private var lastSamples: FloatArray? = null
     private var lastRate = 0
     private var track: AudioTrack? = null
@@ -73,62 +72,80 @@ class Engine(private val ctx: Context) {
     val library = mutableStateListOf<LibItem>()
 
     init {
-        refreshModel()
+        refreshPacks()
+        refreshVoices()
         refreshLibrary()
     }
 
     fun changeArabic(v: Boolean) { arabic = v; prefs.edit().putBoolean("ar", v).apply() }
-    fun changeQuality(v: Int) { quality = v; prefs.edit().putInt("quality", v).apply() }
+    fun changeQuality(v: Int) { quality = v; core.quality = v }
     fun setModelUrlPref(v: String) { modelUrl = v; prefs.edit().putString("modelUrl", v).apply() }
 
     private fun post(block: () -> Unit) { ui.post(block) }
+    private fun S() = com.cloneLocal.app.ui.Strings(arabic)
 
-    // ------------------------------------------------------------ model
+    // ------------------------------------------------------------ packs
 
-    private fun modelFiles() = modelRoot.walkTopDown().filter { it.isFile }.toList()
-
-    private fun pickOnnx(files: List<File>, key: String): String? {
-        val c = files.filter { it.extension == "onnx" && it.name.contains(key) }
-        return (c.firstOrNull { it.name.contains("int8") } ?: c.firstOrNull())?.absolutePath
+    fun refreshPacks() {
+        arPack.ready = core.arabicReady()
+        zipPack.ready = core.zipReady()
     }
 
-    fun refreshModel() {
-        val f = modelFiles()
-        modelReady = pickOnnx(f, "encoder") != null && pickOnnx(f, "decoder") != null &&
-            pickOnnx(f, "vocos") != null && f.any { it.name == "tokens.txt" }
-    }
-
-    fun downloadModel() {
-        if (modelBusy) return
-        modelBusy = true
-        modelError = null
-        modelProgress = 0f
+    fun downloadArabicPack() {
+        if (arPack.busy) return
+        arPack.busy = true; arPack.error = null; arPack.progress = 0f
         thread {
             try {
-                modelRoot.mkdirs()
-                val archive = File(ctx.cacheDir, "model.tar.bz2")
-                download(modelUrl.trim(), archive) { p -> post { modelProgress = p * .85f } }
-                post { modelStatus = "extract"; modelProgress = .88f }
-                extractTarBz2(archive, modelRoot)
+                core.release()
+                core.piperDir.mkdirs(); core.ovDir.mkdirs()
+                val archive = File(ctx.cacheDir, "piper.tar.bz2")
+                download(PIPER_URL, archive) { p -> post { arPack.progress = p * .12f } }
+                post { arPack.extracting = true }
+                extractTarBz2(archive, core.piperDir)
                 archive.delete()
-                val vocoder = File(modelRoot, "vocos_24khz.onnx")
-                if (!vocoder.exists()) download(VOCODER_URL, vocoder) { p -> post { modelProgress = .88f + p * .12f } }
-                tts?.release(); tts = null
-                post { modelProgress = 1f; refreshModel() }
+                post { arPack.extracting = false }
+                for ((name, from, span) in listOf(Triple("tone_extract.onnx", .12f, .03f), Triple("tone_color.onnx", .15f, .85f))) {
+                    val dest = File(core.ovDir, name)
+                    if (!dest.exists()) {
+                        val tmp = File(core.ovDir, "$name.part")
+                        download("$OPENVOICE_BASE/$name", tmp) { p -> post { arPack.progress = from + p * span } }
+                        tmp.renameTo(dest)
+                    }
+                }
+                post { arPack.progress = 1f; refreshPacks() }
             } catch (e: Exception) {
-                post { modelError = e.message ?: e.javaClass.simpleName }
+                post { arPack.error = e.message ?: e.javaClass.simpleName }
             } finally {
-                post { modelBusy = false; modelStatus = "" }
+                post { arPack.busy = false; arPack.extracting = false }
             }
         }
     }
 
-    fun deleteModel() {
-        tts?.release(); tts = null
-        modelRoot.deleteRecursively()
-        refreshModel()
+    fun downloadZipPack() {
+        if (zipPack.busy) return
+        zipPack.busy = true; zipPack.error = null; zipPack.progress = 0f
+        thread {
+            try {
+                core.release()
+                core.zipDir.mkdirs()
+                val archive = File(ctx.cacheDir, "model.tar.bz2")
+                download(modelUrl.trim(), archive) { p -> post { zipPack.progress = p * .85f } }
+                post { zipPack.extracting = true; zipPack.progress = .88f }
+                extractTarBz2(archive, core.zipDir)
+                archive.delete()
+                val vocoder = File(core.zipDir, "vocos_24khz.onnx")
+                if (!vocoder.exists()) download(VOCODER_URL, vocoder) { p -> post { zipPack.progress = .88f + p * .12f } }
+                post { zipPack.progress = 1f; refreshPacks() }
+            } catch (e: Exception) {
+                post { zipPack.error = e.message ?: e.javaClass.simpleName }
+            } finally {
+                post { zipPack.busy = false; zipPack.extracting = false }
+            }
+        }
     }
 
+    fun deleteArabicPack() { core.release(); File(ctx.filesDir, "arabic").deleteRecursively(); refreshPacks() }
+    fun deleteZipPack() { core.release(); core.zipDir.deleteRecursively(); refreshPacks() }
     fun clearCache() { ctx.cacheDir.deleteRecursively() }
 
     private fun download(url: String, dest: File, onProgress: (Float) -> Unit) {
@@ -182,17 +199,38 @@ class Engine(private val ctx: Context) {
         }
     }
 
-    // ------------------------------------------------------------ reference
+    // ------------------------------------------------------------ voices
 
-    fun loadReference(uri: Uri, displayName: String) {
+    fun refreshVoices() {
+        val list = core.listVoices()
+        voices.clear(); voices.addAll(list)
+        activeId = core.activeVoice()?.id
+        refText = activeVoice?.refText.orEmpty()
+    }
+
+    fun selectVoice(v: Voice) {
+        saveRefText()
+        core.activeVoiceId = v.id
+        activeId = v.id
+        refText = v.refText
+    }
+
+    fun deleteVoice(v: Voice) { core.deleteVoice(v); refreshVoices() }
+
+    fun saveRefText() { activeVoice?.let { if (it.refText != refText) it.refText = refText } }
+
+    /** Decode the picked audio/video, keep the first 15 s as 22.05 kHz mono, and save it as a new voice. */
+    fun addVoice(uri: Uri, displayName: String) {
         thread {
             try {
                 val (samples, rate) = AudioDecoder.decode(ctx, uri, 15)
-                refSamples = samples
-                refRate = rate
+                val s22 = Resampler.resample(samples, rate, OpenVoice.SR)
+                val base = displayName.substringBeforeLast('.').ifBlank { "Voice" }
+                core.createVoice(base, s22)
                 post {
-                    refName = displayName
-                    refSeconds = samples.size / rate.toFloat()
+                    saveRefTextSafe()
+                    refreshVoices()
+                    refText = ""
                     if (gen is Gen.Error) gen = Gen.Idle
                 }
             } catch (e: Exception) {
@@ -201,72 +239,39 @@ class Engine(private val ctx: Context) {
         }
     }
 
+    private fun saveRefTextSafe() { /* previous voice's transcript was saved on selection / generate */ }
+
     // ------------------------------------------------------------ synthesis
-
-    private fun S() = com.cloneLocal.app.ui.Strings(arabic)
-
-    private fun loadTts(): OfflineTts {
-        tts?.let { return it }
-        val files = modelFiles()
-        val tokens = files.firstOrNull { it.name == "tokens.txt" }?.absolutePath ?: error("tokens.txt missing")
-        val lexicon = files.firstOrNull { it.name == "lexicon.txt" }?.absolutePath ?: ""
-        val espeak = modelRoot.walkTopDown().firstOrNull { it.isDirectory && it.name == "espeak-ng-data" }?.absolutePath ?: ""
-        val cfg = OfflineTtsConfig(
-            model = OfflineTtsModelConfig(
-                zipvoice = OfflineTtsZipVoiceModelConfig(
-                    tokens = tokens,
-                    encoder = pickOnnx(files, "encoder") ?: error("encoder missing"),
-                    decoder = pickOnnx(files, "decoder") ?: error("decoder missing"),
-                    vocoder = pickOnnx(files, "vocos") ?: error("vocoder missing"),
-                    lexicon = lexicon,
-                    dataDir = espeak,
-                ),
-                numThreads = 4,
-                debug = false,
-                provider = "cpu",
-            ),
-        )
-        return OfflineTts(config = cfg).also { tts = it }
-    }
 
     fun generate() {
         val s = S()
-        val ref = refSamples
         val text = inputText.trim()
-        val rt = refText.trim()
+        val voice = activeVoice
+        val ar = VoxCore.isArabic(text)
         when {
-            !modelReady -> { gen = Gen.Error(s.errNoModel); return }
-            ref == null -> { gen = Gen.Error(s.errNoRef); return }
-            rt.isEmpty() -> { gen = Gen.Error(s.errNoRefText); return }
             text.isEmpty() -> { gen = Gen.Error(s.errNoText); return }
+            ar && !arPack.ready -> { gen = Gen.Error(s.errNoArPack); return }
+            !ar && !zipPack.ready -> { gen = Gen.Error(s.errNoModel); return }
+            voice == null && !ar -> { gen = Gen.Error(s.errNoRef); return }
+            !ar && refText.isBlank() -> { gen = Gen.Error(s.errNoRefText); return }
         }
+        saveRefText()
         stopPlayback()
         gen = Gen.Running
         val token = ++genToken
-        val steps = intArrayOf(3, 5, 8)[quality.coerceIn(0, 2)]
         thread {
             try {
-                val engine = loadTts()
-                val audio = engine.generateWithConfig(
-                    text,
-                    GenerationConfig(
-                        referenceAudio = ref!!,
-                        referenceSampleRate = refRate,
-                        referenceText = rt,
-                        numSteps = steps,
-                        speed = 1.0f,
-                    ),
-                )
+                val (samples, rate) = core.synthesize(text, voice)
                 if (token != genToken) return@thread
                 val f = File(libDir, "vox_${System.currentTimeMillis()}.wav")
-                f.outputStream().use { WavWriter.write(it, audio.samples, audio.sampleRate) }
+                f.outputStream().use { WavWriter.write(it, samples, rate) }
                 post {
-                    lastSamples = audio.samples
-                    lastRate = audio.sampleRate
-                    resultSeconds = audio.samples.size / audio.sampleRate.toFloat()
+                    lastSamples = samples
+                    lastRate = rate
+                    resultSeconds = samples.size / rate.toFloat()
                     gen = Gen.Done
                     refreshLibrary()
-                    playSamples(audio.samples, audio.sampleRate)
+                    playSamples(samples, rate)
                 }
             } catch (e: Throwable) {
                 if (token == genToken) post { gen = Gen.Error("${s.errGen}: ${e.message ?: e.javaClass.simpleName}") }
@@ -360,16 +365,16 @@ class Engine(private val ctx: Context) {
         }
     }
 
-    fun release() {
-        stopPlayback()
-        tts?.release(); tts = null
-    }
+    fun release() { stopPlayback() }
 
     companion object {
         const val MODEL_URL =
-            "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-zipvoice-distill-zh-en-emilia.tar.bz2"
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-zipvoice-distill-int8-zh-en-emilia.tar.bz2"
         const val VOCODER_URL =
             "https://github.com/k2-fsa/sherpa-onnx/releases/download/vocoder-models/vocos_24khz.onnx"
+        const val PIPER_URL =
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-ar_JO-kareem-medium-int8.tar.bz2"
+        const val OPENVOICE_BASE = "https://huggingface.co/eugenehp/openvoice/resolve/main"
     }
 }
 

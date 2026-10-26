@@ -76,7 +76,7 @@ private fun VoxApp(engine: Engine) {
                 val i = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                 if (i >= 0 && c.moveToFirst()) c.getString(i) else null
             } ?: "reference"
-            engine.loadReference(uri, name)
+            engine.addVoice(uri, name)
         }
     }
 

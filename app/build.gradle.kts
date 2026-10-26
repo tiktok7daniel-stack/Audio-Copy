@@ -12,8 +12,8 @@ android {
         applicationId = "com.voxgate.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
         ndk { abiFilters += "arm64-v8a" }
     }
 
@@ -38,4 +38,5 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("org.apache.commons:commons-compress:1.26.2")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.22.0")
 }

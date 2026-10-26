@@ -4,12 +4,28 @@ package com.cloneLocal.app.ui
 class Strings(val ar: Boolean) {
     private fun s(en: String, a: String) = if (ar) a else en
 
+    val errNoArPack get() = s("Download the Arabic pack in Settings first.", "نزّل الحزمة العربية من الإعدادات أولًا.")
+    val voiceLabel get() = s("ACTIVE VOICE", "الصوت المستخدم")
+    val addVoice get() = s("ADD VOICE FROM A CLIP", "أضف صوتًا من مقطع")
+    val voicesTitle get() = s("YOUR VOICES", "أصواتك")
+    val noVoices get() = s("No voices yet. Add one from the Home screen.", "لا توجد أصوات بعد. أضف صوتًا من الشاشة الرئيسية.")
+    val useVoice get() = s("USE", "استخدم")
+    val activeTag get() = s("ACTIVE", "مفعّل")
+    val arPackTitle get() = s("ARABIC PACK", "الحزمة العربية")
+    val arPackNote get() = s("Arabic voice + voice-cloning model, about 175 MB, downloaded once.", "صوت عربي + نموذج استنساخ الصوت، نحو 175 ميغابايت، يُنزَّل مرة واحدة.")
+    val enPackTitle get() = s("ENGLISH / CHINESE PACK", "حزمة الإنجليزية / الصينية")
+    val readerTitle get() = s("USE IN OTHER APPS", "استخدمه في تطبيقات أخرى")
+    val readerNote get() = s(
+        "VoxGate is also a speech engine. In Android: Settings → Text-to-speech output → Preferred engine → VoxGate. Reader apps then read aloud with your active voice.",
+        "VoxGate هو أيضًا محرك نطق. في أندرويد: الإعدادات ← إخراج تحويل النص إلى كلام ← المحرك المفضل ← VoxGate. فتقرأ تطبيقات القراءة بصوتك المفعّل.",
+    )
+    val openTts get() = s("OPEN SPEECH SETTINGS", "افتح إعدادات النطق")
     val appTag get() = s("SYSTEM · VOICE CLONING ENGINE", "النظام · محرك استنساخ الصوت")
     val heroTop get() = s("CLONE ANY", "استنسخ أي")
     val heroGlow get() = s("VOICE.", "صوت.")
     val heroSub get() = s(
-        "Drop in a short clip of a voice and type what it should say. Everything runs on your phone — no internet, no upload.",
-        "ضع مقطعًا قصيرًا لأي صوت واكتب ما تريد أن يقوله. كل شيء يعمل على هاتفك — بدون إنترنت وبدون رفع.",
+        "Drop in a short clip of a voice and type what it should say — in Arabic, English or Chinese. Everything runs on your phone.",
+        "ضع مقطعًا قصيرًا لأي صوت واكتب ما تريد أن يقوله — بالعربية أو الإنجليزية أو الصينية. كل شيء يعمل على هاتفك.",
     )
 
     val navHome get() = s("Home", "الرئيسية")
@@ -22,11 +38,11 @@ class Strings(val ar: Boolean) {
 
     val refLabel get() = s("REFERENCE VOICE", "الصوت المرجعي")
     val refHint get() = s("Pick an audio or video file", "اختر ملف صوت أو فيديو")
-    val refTip get() = s("The first 15 seconds are used. Clean speech works best.", "تُستخدم أول 15 ثانية. الكلام النظيف يعطي أفضل نتيجة.")
-    val refTextLabel get() = s("WORDS SPOKEN IN THE CLIP", "الكلام المقال في المقطع")
+    val refTip get() = s("The first 15 seconds are used. Clean speech with no music works best.", "تُستخدم أول 15 ثانية. الكلام النظيف بدون موسيقى يعطي أفضل نتيجة.")
+    val refTextLabel get() = s("WORDS IN THE CLIP (ENGLISH / CHINESE ONLY)", "الكلام في المقطع (للإنجليزية والصينية فقط)")
     val refTextHint get() = s("Type exactly what the clip says", "اكتب ما يقوله المقطع بالضبط")
     val textLabel get() = s("TEXT TO SPEAK", "النص المراد نطقه")
-    val textHint get() = s("Chinese or English text", "نص بالإنجليزية أو الصينية")
+    val textHint get() = s("Arabic, English or Chinese text", "نص بالعربية أو الإنجليزية أو الصينية")
     val generate get() = s("GENERATE VOICE", "ولّد الصوت")
     val generating get() = s("GENERATING…", "جارٍ التوليد…")
     val cancel get() = s("CANCEL", "إلغاء")
@@ -84,7 +100,7 @@ class Strings(val ar: Boolean) {
     val modelNote get() = s("Chinese + English only. A few hundred MB, downloaded once.", "الصينية والإنجليزية فقط. بضع مئات الميغابايت، تُنزَّل مرة واحدة.")
     val clearCache get() = s("CLEAR CACHE", "مسح الذاكرة المؤقتة")
     val deleteModel get() = s("DELETE MODEL", "حذف النموذج")
-    val about get() = s("VoxGate 1.1 — offline voice cloning, built on open-source models.", "VoxGate 1.1 — استنساخ صوت بدون إنترنت، مبني على نماذج مفتوحة المصدر.")
+    val about get() = s("VoxGate 1.2 — offline voice cloning, built on open-source models.", "VoxGate 1.2 — استنساخ صوت بدون إنترنت، مبني على نماذج مفتوحة المصدر.")
     val dlFailed get() = s("Download failed", "فشل التنزيل")
     val noInternet get() = s("No internet connection or the site is unreachable.", "لا يوجد إنترنت أو الموقع غير متاح.")
 }

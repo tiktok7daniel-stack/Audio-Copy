@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.sp
 import com.cloneLocal.app.Engine
 import com.cloneLocal.app.Gen
 import com.cloneLocal.app.LibItem
+import com.cloneLocal.app.Pack
+import androidx.compose.foundation.layout.width
 import kotlinx.coroutines.delay
 import java.text.DateFormat
 import java.util.Date
@@ -98,7 +100,7 @@ fun HomeScreen(engine: Engine, s: Strings, onPickRef: () -> Unit, onOpenSettings
             }
         }
 
-        if (!engine.modelReady) {
+        if (!engine.arPack.ready && !engine.zipPack.ready) {
             Reveal(3) {
                 Panel(strong = true, accent = C.Warn) {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
@@ -116,7 +118,7 @@ fun HomeScreen(engine: Engine, s: Strings, onPickRef: () -> Unit, onOpenSettings
 
         Reveal(4) {
             Panel(strong = true) {
-                Label(s.refLabel, color = C.Cyan)
+                Label(s.voiceLabel, color = C.Cyan)
                 Spacer(Modifier.height(10.dp))
                 val shape = RoundedCornerShape(6.dp)
                 Row(
@@ -125,15 +127,15 @@ fun HomeScreen(engine: Engine, s: Strings, onPickRef: () -> Unit, onOpenSettings
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Icon(Ic.Mic, if (engine.refName != null) C.Cyan else C.Muted, 22.dp)
+                    Icon(Ic.Mic, if (engine.activeVoice != null) C.Cyan else C.Muted, 22.dp)
                     Column(Modifier.weight(1f)) {
                         BasicText(
-                            engine.refName ?: s.refHint,
-                            style = type.bodyRegular(if (engine.refName != null) C.Text else C.Faint, 14),
+                            engine.activeVoice?.name ?: s.refHint,
+                            style = type.bodyRegular(if (engine.activeVoice != null) C.Text else C.Faint, 14),
                             maxLines = 1,
                         )
-                        if (engine.refName != null) {
-                            BasicText("%.1f s".format(engine.refSeconds), style = type.label(C.Cyan))
+                        engine.activeVoice?.let { v ->
+                            BasicText("%.1f s".format(v.seconds), style = type.label(C.Cyan))
                         }
                     }
                     Icon(Ic.Folder, C.Cyan, 20.dp)
@@ -312,47 +314,120 @@ fun SettingsScreen(engine: Engine, s: Strings) {
             }
         }
         Reveal(4) {
-            Panel(strong = true) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    Label(s.model, color = C.Cyan)
-                    SystemTag(
-                        if (engine.modelBusy) s.downloading else if (engine.modelReady) s.modelReady else s.modelMissing,
-                        if (engine.modelReady && !engine.modelBusy) C.Success else C.Warn,
-                    )
-                }
-                Spacer(Modifier.height(10.dp))
-                BasicText(s.modelNote, style = type.body(C.Muted, 12))
-                Spacer(Modifier.height(14.dp))
-                Label(s.modelUrl)
-                Spacer(Modifier.height(8.dp))
-                Field(engine.modelUrl, { engine.setModelUrlPref(it) }, "https://…", ltr = true, small = true)
-                if (engine.modelBusy) {
-                    Spacer(Modifier.height(14.dp))
-                    GlowBar(engine.modelProgress)
-                    Spacer(Modifier.height(6.dp))
-                    BasicText(
-                        if (engine.modelStatus == "extract") s.extractingModel else "${(engine.modelProgress * 100).toInt()}%",
-                        style = type.stat(C.Cyan, 22),
-                    )
-                }
-                engine.modelError?.let {
-                    Spacer(Modifier.height(12.dp))
-                    ErrorPanel("${s.dlFailed}: $it", s.noInternet)
-                }
-                Spacer(Modifier.height(16.dp))
-                PrimaryButton(
-                    (if (engine.modelReady) s.redownload else s.downloadModel).upperIfEn(),
-                    icon = Ic.Download,
-                    loading = engine.modelBusy,
-                    onClick = { engine.downloadModel() },
-                )
-                if (engine.modelReady) {
-                    Spacer(Modifier.height(10.dp))
-                    GhostButton(s.deleteModel.upperIfEn(), color = C.Danger, icon = Ic.Trash, onClick = { engine.deleteModel() })
+            PackPanel(s.arPackTitle, s.arPackNote, engine.arPack, s, null, {}, { engine.downloadArabicPack() }, { engine.deleteArabicPack() })
+        }
+        Reveal(5) { VoicesPanel(engine, s) }
+        Reveal(6) {
+            PackPanel(
+                s.enPackTitle, s.modelNote, engine.zipPack, s,
+                engine.modelUrl, { engine.setModelUrlPref(it) },
+                { engine.downloadZipPack() }, { engine.deleteZipPack() },
+            )
+        }
+        Reveal(7) { ReaderPanel(s) }
+        Reveal(8) { GhostButton(s.clearCache.upperIfEn(), icon = Ic.Refresh, onClick = { engine.clearCache() }) }
+        BasicText(s.about, style = type.body(C.Muted, 12))
+    }
+}
+
+
+@Composable
+private fun PackPanel(
+    title: String,
+    note: String,
+    pack: Pack,
+    s: Strings,
+    url: String?,
+    onUrl: (String) -> Unit,
+    onDownload: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val type = LocalType.current
+    Panel(strong = true) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            Label(title, color = C.Cyan)
+            SystemTag(
+                if (pack.busy) s.downloading else if (pack.ready) s.modelReady else s.modelMissing,
+                if (pack.ready && !pack.busy) C.Success else C.Warn,
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        BasicText(note, style = type.body(C.Muted, 12))
+        if (url != null) {
+            Spacer(Modifier.height(14.dp))
+            Label(s.modelUrl)
+            Spacer(Modifier.height(8.dp))
+            Field(url, onUrl, "https://…", ltr = true, small = true)
+        }
+        if (pack.busy) {
+            Spacer(Modifier.height(14.dp))
+            GlowBar(pack.progress)
+            Spacer(Modifier.height(6.dp))
+            BasicText(
+                if (pack.extracting) s.extractingModel else "${(pack.progress * 100).toInt()}%",
+                style = type.stat(C.Cyan, 22),
+            )
+        }
+        pack.error?.let {
+            Spacer(Modifier.height(12.dp))
+            ErrorPanel("${s.dlFailed}: $it", s.noInternet)
+        }
+        Spacer(Modifier.height(16.dp))
+        PrimaryButton(
+            (if (pack.ready) s.redownload else s.downloadModel).upperIfEn(),
+            icon = Ic.Download, loading = pack.busy, onClick = onDownload,
+        )
+        if (pack.ready) {
+            Spacer(Modifier.height(10.dp))
+            GhostButton(s.deleteModel.upperIfEn(), color = C.Danger, icon = Ic.Trash, onClick = onDelete)
+        }
+    }
+}
+
+@Composable
+private fun VoicesPanel(engine: Engine, s: Strings) {
+    val type = LocalType.current
+    Panel {
+        Label(s.voicesTitle, color = C.Cyan)
+        Spacer(Modifier.height(10.dp))
+        if (engine.voices.isEmpty()) {
+            BasicText(s.noVoices, style = type.body(C.Muted, 13))
+        } else {
+            engine.voices.forEach { v ->
+                val active = v.id == engine.activeId
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        BasicText(v.name, style = type.bodyRegular(if (active) C.Cyan else C.Text, 14), maxLines = 1)
+                        BasicText("%.1f s".format(v.seconds), style = type.label(C.Muted))
+                    }
+                    if (active) SystemTag(s.activeTag, C.Success, blink = false)
+                    else GhostButton(s.useVoice.upperIfEn(), modifier = Modifier.width(96.dp).height(40.dp), onClick = { engine.selectVoice(v) })
+                    IconBtn(Ic.Trash, C.Danger) { engine.deleteVoice(v) }
                 }
             }
         }
-        Reveal(5) { GhostButton(s.clearCache.upperIfEn(), icon = Ic.Refresh, onClick = { engine.clearCache() }) }
-        BasicText(s.about, style = type.body(C.Muted, 12))
+    }
+}
+
+@Composable
+private fun ReaderPanel(s: Strings) {
+    val type = LocalType.current
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    Panel(strong = true) {
+        Label(s.readerTitle, color = C.Cyan)
+        Spacer(Modifier.height(10.dp))
+        BasicText(s.readerNote, style = type.body(C.Muted, 13))
+        Spacer(Modifier.height(14.dp))
+        GhostButton(s.openTts.upperIfEn(), icon = Ic.Sliders, onClick = {
+            try {
+                ctx.startActivity(android.content.Intent("com.android.settings.TTS_SETTINGS").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+            } catch (e: Exception) {
+                ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+        })
     }
 }
